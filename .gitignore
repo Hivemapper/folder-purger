@@ -1,5 +1,2 @@
-/.idea/.gitignore
-/.idea/folder_purger.iml
-/.idea/modules.xml
-/.idea/vcs.xml
-/.idea/watcherTasks.xml
+/.idea
+/dist
