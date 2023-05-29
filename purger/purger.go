@@ -77,7 +77,10 @@ func (d *Folder) freeUpSpace(nextFileSize int64) error {
 	defer d.lock.Unlock()
 
 	if d.currentSize+nextFileSize > d.maxSize {
-		spaceToReclaim := d.maxSize * 10 / 100
+		tenPercent := d.maxSize - (d.maxSize * 90 / 100)
+		spaceToReclaim := d.currentSize - d.maxSize + tenPercent
+		spaceReclaimed := int64(0)
+
 		for spaceToReclaim > 0 {
 			fi := d.files[0]
 			d.files = d.files[1:]
@@ -95,8 +98,9 @@ func (d *Folder) freeUpSpace(nextFileSize int64) error {
 			delete(d.knowFiles, fi.name)
 			d.currentSize -= fi.size
 			spaceToReclaim -= fi.size
+			spaceReclaimed += fi.size
 		}
-		fmt.Println("free space: done", d.currentSize, spaceToReclaim)
+		fmt.Println("reclaimed space:", spaceReclaimed, "new size:", d.currentSize, nextFileSize, "max size:", d.maxSize)
 	}
 
 	return nil
