@@ -6,7 +6,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -48,6 +47,7 @@ func (d *Folder) AddFile(f *FileInfo) {
 }
 
 func (d *Folder) loadInitialState() error {
+	fmt.Println("loading initial state of folder:", d.path)
 	files, err := os.ReadDir(d.path)
 	if err != nil {
 		return fmt.Errorf("reading gps data path: %w", err)
@@ -162,12 +162,12 @@ func (p *Purger) purge() error {
 				return fmt.Errorf("watcher channel closed")
 			}
 			if event.Op == fsnotify.Create {
-				if strings.HasSuffix(event.Name, "jpg") {
-					err := p.watchFile(event.Name)
-					if err != nil {
-						return fmt.Errorf("watching file %s: %w", event.Name, err)
-					}
+				//if strings.HasSuffix(event.Name, "jpg") {
+				err := p.watchFile(event.Name)
+				if err != nil {
+					return fmt.Errorf("watching file %s: %w", event.Name, err)
 				}
+				//}
 			}
 		case err, ok := <-p.watcher.Errors:
 			if !ok {
