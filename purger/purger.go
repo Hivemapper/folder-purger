@@ -6,10 +6,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -27,6 +27,9 @@ type Folder struct {
 	files       []*FileInfo
 	knowFiles   map[string]bool
 }
+
+//todo: purge base on remaining space on disk
+//HDC-S Gyro is still returning -2000.061037018952
 
 func NewFolder(path string, maxSize int64) *Folder {
 	f := &Folder{
@@ -48,6 +51,7 @@ func (d *Folder) AddFile(f *FileInfo) {
 }
 
 func (d *Folder) loadInitialState() error {
+	fmt.Println("loading initial state of folder:", d.path, humanize.Bytes(uint64(d.currentSize)), humanize.Bytes(uint64(d.maxSize)))
 	files, err := os.ReadDir(d.path)
 	if err != nil {
 		return fmt.Errorf("reading gps data path: %w", err)
@@ -69,6 +73,7 @@ func (d *Folder) loadInitialState() error {
 		}
 		d.AddFile(fi)
 	}
+	fmt.Println("loaded initial state of folder:", d.path, humanize.Bytes(uint64(d.currentSize)), humanize.Bytes(uint64(d.maxSize)))
 	return nil
 }
 
@@ -76,6 +81,7 @@ func (d *Folder) freeUpSpace(nextFileSize int64) error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
+	//fmt.Println("free space: folder:", d.path, humanize.Bytes(uint64(d.currentSize)), "next file size:", humanize.Bytes(uint64(nextFileSize)), "max size:", humanize.Bytes(uint64(d.maxSize)))
 	if d.currentSize+nextFileSize > d.maxSize {
 		tenPercent := d.maxSize - (d.maxSize * 90 / 100)
 		spaceToReclaim := d.currentSize - d.maxSize + tenPercent
@@ -100,7 +106,7 @@ func (d *Folder) freeUpSpace(nextFileSize int64) error {
 			spaceToReclaim -= fi.size
 			spaceReclaimed += fi.size
 		}
-		fmt.Println("reclaimed space:", spaceReclaimed, "new size:", d.currentSize, nextFileSize, "max size:", d.maxSize)
+		fmt.Println("reclaimed space for folder:", d.path, humanize.Bytes(uint64(spaceReclaimed)), "new size:", humanize.Bytes(uint64(d.currentSize)), "next file size:", humanize.Bytes(uint64(nextFileSize)), "max size:", humanize.Bytes(uint64(d.maxSize)))
 	}
 
 	return nil
@@ -162,12 +168,12 @@ func (p *Purger) purge() error {
 				return fmt.Errorf("watcher channel closed")
 			}
 			if event.Op == fsnotify.Create {
-				if strings.HasSuffix(event.Name, "jpg") {
-					err := p.watchFile(event.Name)
-					if err != nil {
-						return fmt.Errorf("watching file %s: %w", event.Name, err)
-					}
+				//if strings.HasSuffix(event.Name, "jpg") {
+				err := p.watchFile(event.Name)
+				if err != nil {
+					return fmt.Errorf("watching file %s: %w", event.Name, err)
 				}
+				//}
 			}
 		case err, ok := <-p.watcher.Errors:
 			if !ok {
@@ -184,7 +190,6 @@ func (p *Purger) watchFile(f string) error {
 
 	if folder, ok := p.folders[dir]; ok {
 		if stat, err := os.Stat(f); err == nil {
-
 			fp := path.Join(folder.path, fileName)
 			if fileExists(f) {
 				folder.AddFile(&FileInfo{
@@ -197,10 +202,12 @@ func (p *Purger) watchFile(f string) error {
 					return fmt.Errorf("freeing space: %w", err)
 				}
 			} else {
-				log.Println("move: skipping file that does not exist anymore: ", fp)
+				log.Println("watch: skipping file that does not exist anymore: ", fp)
 			}
 
 		}
+	} else {
+		log.Println("watch: skipping file that does not belong to a tracked folder: ", f, dir)
 	}
 	return nil
 }
