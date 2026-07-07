@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	humanize "github.com/dustin/go-humanize"
 	"golang.org/x/sys/unix"
@@ -22,7 +23,7 @@ func main() {
 		panic("Wrong number of arguments")
 	}
 
-	folders := map[string]*purger.Folder{}
+	var folders []*purger.Folder
 
 	for i := 0; i < len(argsWithoutProg); i += 2 {
 		maxSize := uint64(0)
@@ -34,27 +35,34 @@ func main() {
 		if strings.HasSuffix(sizeParam, "%") {
 			maxSizePercent, err := strconv.Atoi(sizeParam[:len(sizeParam)-1])
 			if err != nil {
-				panic(fmt.Sprintf("Failed to parse destination max size: %s", argsWithoutProg[i+2]))
+				panic(fmt.Sprintf("Failed to parse destination max size: %s", sizeParam))
 			}
 			maxSize, err = getDriveFreeSpace(folder, uint64(maxSizePercent))
-
+			if err != nil {
+				panic(fmt.Sprintf("Failed to get drive free space: %s", err))
+			}
 		} else {
 			size, err := strconv.Atoi(sizeParam)
 			if err != nil {
-				panic(fmt.Sprintf("Failed to parse destination max size: %s", argsWithoutProg[i+2]))
+				panic(fmt.Sprintf("Failed to parse destination max size: %s", sizeParam))
 			}
 			maxSize = uint64(size)
 		}
-		f := purger.NewFolder(folder, int64(maxSize))
-		folders[folder] = f
+
+		if _, err := os.Stat(folder); os.IsNotExist(err) {
+			fmt.Printf("Creating folder: %s\n", folder)
+			if err := os.MkdirAll(folder, os.ModePerm); err != nil {
+				panic(fmt.Sprintf("Failed to create folder %s: %s", folder, err))
+			}
+		}
+
+		f := &purger.Folder{Path: folder, MaxSize: int64(maxSize)}
+		folders = append(folders, f)
 		fmt.Println("tracking folder:", folder, "max size:", humanize.Bytes(maxSize))
 	}
 
-	p := purger.NewPurger(folders)
-	err := p.Purge() //blocking call
-
-	panic(err)
-
+	p := purger.NewPurger(folders, 5*time.Minute)
+	p.Run()
 }
 
 func getDriveFreeSpace(path string, percent uint64) (uint64, error) {
