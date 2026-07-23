@@ -56,25 +56,18 @@ func (f *Folder) CheckAndPurge() error {
 		return fmt.Errorf("reading directory %s: %w", f.Path, err)
 	}
 
-	var dirs []os.DirEntry
-	for _, e := range entries {
-		if e.IsDir() {
-			dirs = append(dirs, e)
-		}
-	}
-
-	if len(dirs) == 0 {
+	if len(entries) == 0 {
 		return nil
 	}
 
-	removeCount := len(dirs) * 80 / 100
+	removeCount := len(entries) * 80 / 100
 	if removeCount == 0 {
 		removeCount = 1
 	}
 
 	var reclaimed int64
 	for i := 0; i < removeCount; i++ {
-		p := filepath.Join(f.Path, dirs[i].Name())
+		p := filepath.Join(f.Path, entries[i].Name())
 		s, _ := dirSize(p)
 		if err := os.RemoveAll(p); err != nil {
 			log.Printf("failed to remove %s: %v", p, err)
@@ -84,8 +77,8 @@ func (f *Folder) CheckAndPurge() error {
 		fmt.Printf("removed %s (%s)\n", p, humanize.Bytes(uint64(s)))
 	}
 
-	fmt.Printf("reclaimed %s from %s (removed %d/%d subdirs)\n",
-		humanize.Bytes(uint64(reclaimed)), f.Path, removeCount, len(dirs))
+	fmt.Printf("reclaimed %s from %s (removed %d/%d items)\n",
+		humanize.Bytes(uint64(reclaimed)), f.Path, removeCount, len(entries))
 
 	return nil
 }
