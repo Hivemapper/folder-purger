@@ -6,10 +6,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/dustin/go-humanize"
 )
+
+const purgeBatchPercent = 80
 
 type Folder struct {
 	Path    string
@@ -19,6 +22,11 @@ type Folder struct {
 type Purger struct {
 	folders  []*Folder
 	interval time.Duration
+}
+
+type purgeItem struct {
+	name    string
+	modTime time.Time
 }
 
 func NewPurger(folders []*Folder, interval time.Duration) *Purger {
@@ -51,30 +59,23 @@ func (f *Folder) CheckAndPurge() error {
 		return nil
 	}
 
-	entries, err := os.ReadDir(f.Path)
+	items, err := purgeItems(f.Path)
 	if err != nil {
 		return fmt.Errorf("reading directory %s: %w", f.Path, err)
 	}
 
-	var dirs []os.DirEntry
-	for _, e := range entries {
-		if e.IsDir() {
-			dirs = append(dirs, e)
-		}
-	}
-
-	if len(dirs) == 0 {
+	if len(items) == 0 {
 		return nil
 	}
 
-	removeCount := len(dirs) * 80 / 100
+	removeCount := len(items) * purgeBatchPercent / 100
 	if removeCount == 0 {
 		removeCount = 1
 	}
 
 	var reclaimed int64
 	for i := 0; i < removeCount; i++ {
-		p := filepath.Join(f.Path, dirs[i].Name())
+		p := filepath.Join(f.Path, items[i].name)
 		s, _ := dirSize(p)
 		if err := os.RemoveAll(p); err != nil {
 			log.Printf("failed to remove %s: %v", p, err)
@@ -84,10 +85,36 @@ func (f *Folder) CheckAndPurge() error {
 		fmt.Printf("removed %s (%s)\n", p, humanize.Bytes(uint64(s)))
 	}
 
-	fmt.Printf("reclaimed %s from %s (removed %d/%d subdirs)\n",
-		humanize.Bytes(uint64(reclaimed)), f.Path, removeCount, len(dirs))
+	fmt.Printf("reclaimed %s from %s (removed %d/%d items)\n",
+		humanize.Bytes(uint64(reclaimed)), f.Path, removeCount, len(items))
 
 	return nil
+}
+
+func purgeItems(path string) ([]purgeItem, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]purgeItem, 0, len(entries))
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			log.Printf("failed to stat %s: %v", filepath.Join(path, entry.Name()), err)
+			continue
+		}
+		items = append(items, purgeItem{
+			name:    entry.Name(),
+			modTime: info.ModTime(),
+		})
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].modTime.Before(items[j].modTime)
+	})
+
+	return items, nil
 }
 
 func dirSize(path string) (int64, error) {

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -79,4 +80,78 @@ func TestPurgeWithNestedFiles(t *testing.T) {
 	// 80% of 4 = 3.2 → 3 removed, 1 remains
 	require.Equal(t, 1, len(entries))
 	require.Equal(t, "fkm_0003", entries[0].Name())
+}
+
+func TestPurgeWithTopLevelFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	for i := 0; i < 10; i++ {
+		file := filepath.Join(dir, fmt.Sprintf("video_%04d.mp4", i))
+		require.NoError(t, os.WriteFile(file, make([]byte, 1024), 0644))
+	}
+
+	f := &Folder{Path: dir, MaxSize: 1024 * 5}
+	require.NoError(t, f.CheckAndPurge())
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+
+	// 80% of 10 = 8 removed, 2 remain
+	require.Equal(t, 2, len(entries))
+	require.Equal(t, "video_0008.mp4", entries[0].Name())
+	require.Equal(t, "video_0009.mp4", entries[1].Name())
+}
+
+func TestPurgeWithMixedTopLevelItems(t *testing.T) {
+	dir := t.TempDir()
+
+	for i := 0; i < 2; i++ {
+		sub := filepath.Join(dir, fmt.Sprintf("dir_%04d", i))
+		require.NoError(t, os.MkdirAll(sub, 0755))
+		require.NoError(t, os.WriteFile(filepath.Join(sub, "image.jpg"), make([]byte, 1024), 0644))
+	}
+
+	for i := 0; i < 3; i++ {
+		file := filepath.Join(dir, fmt.Sprintf("file_%04d.mp4", i))
+		require.NoError(t, os.WriteFile(file, make([]byte, 1024), 0644))
+	}
+
+	f := &Folder{Path: dir, MaxSize: 1024}
+	require.NoError(t, f.CheckAndPurge())
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+
+	// 80% of 5 = 4 removed, 1 remains
+	require.Equal(t, 1, len(entries))
+	require.Equal(t, "file_0002.mp4", entries[0].Name())
+}
+
+func TestPurgeUsesOldestModTimeFirst(t *testing.T) {
+	dir := t.TempDir()
+	baseTime := time.Now().Add(-time.Hour)
+	namesByAge := []string{
+		"z_oldest.mp4",
+		"y_older.mp4",
+		"x_old.mp4",
+		"b_recent.mp4",
+		"a_newest.mp4",
+	}
+
+	for i, name := range namesByAge {
+		file := filepath.Join(dir, name)
+		require.NoError(t, os.WriteFile(file, make([]byte, 1024), 0644))
+		modTime := baseTime.Add(time.Duration(i) * time.Minute)
+		require.NoError(t, os.Chtimes(file, modTime, modTime))
+	}
+
+	f := &Folder{Path: dir, MaxSize: 1024}
+	require.NoError(t, f.CheckAndPurge())
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+
+	// 80% of 5 = 4 removed. The newest item remains even though it sorts first by name.
+	require.Equal(t, 1, len(entries))
+	require.Equal(t, "a_newest.mp4", entries[0].Name())
 }
