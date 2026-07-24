@@ -101,7 +101,8 @@ func purgeItems(path string) ([]purgeItem, error) {
 	for _, entry := range entries {
 		info, err := entry.Info()
 		if err != nil {
-			return nil, err
+			log.Printf("failed to stat %s: %v", filepath.Join(path, entry.Name()), err)
+			continue
 		}
 		items = append(items, purgeItem{
 			name:    entry.Name(),
