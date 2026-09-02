@@ -17,7 +17,7 @@ const (
 
 	fetchTimeout  = 3 * time.Second
 	fetchAttempts = 5
-	retryDelay    = 3 * time.Second
+	retryDelay    = 10 * time.Second
 )
 
 type FolderLimit struct {
