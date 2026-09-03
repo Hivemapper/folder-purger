@@ -118,11 +118,14 @@ func argFolders(args []string) []*purger.Folder {
 }
 
 func ensureFolder(path string) error {
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		return nil
+	if _, err := os.Stat(path); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		fmt.Printf("Creating folder: %s\n", path)
+		return os.MkdirAll(path, os.ModePerm)
 	}
-	fmt.Printf("Creating folder: %s\n", path)
-	return os.MkdirAll(path, os.ModePerm)
+	return nil
 }
 
 func getDriveFreeSpace(path string, percent uint64) (uint64, error) {
