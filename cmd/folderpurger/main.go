@@ -25,7 +25,7 @@ func main() {
 		panic("Wrong number of arguments")
 	}
 
-	folders := configuratorFolders()
+	folders := configFolders()
 	if folders == nil {
 		folders = argFolders(argsWithoutProg)
 	}
@@ -38,12 +38,12 @@ func main() {
 	p.Run()
 }
 
-// configuratorFolders returns the folders the configurator says to track, or
-// nil to fall back to the CLI arguments.
-func configuratorFolders() []*purger.Folder {
-	limits, err := config.FetchFolderLimits(config.DefaultBaseURL)
+// configFolders returns the folders the device config says to track, or nil to
+// fall back to the CLI arguments.
+func configFolders() []*purger.Folder {
+	limits, err := config.FolderLimits()
 	if err != nil {
-		fmt.Printf("using CLI folders, configurator unavailable: %s\n", err)
+		fmt.Printf("using CLI folders, no readable config: %s\n", err)
 		return nil
 	}
 	return foldersFor(limits)
@@ -53,7 +53,7 @@ func configuratorFolders() []*purger.Folder {
 // none are usable so the caller falls back to the CLI arguments.
 func foldersFor(limits map[string]int64) []*purger.Folder {
 	if len(limits) == 0 {
-		fmt.Println("using CLI folders, configurator has no folder limits")
+		fmt.Println("using CLI folders, config has no folder limits")
 		return nil
 	}
 
@@ -73,7 +73,7 @@ func foldersFor(limits map[string]int64) []*purger.Folder {
 	}
 
 	if len(folders) == 0 {
-		fmt.Println("using CLI folders, no usable folder from configurator")
+		fmt.Println("using CLI folders, no usable folder from config")
 		return nil
 	}
 

@@ -1,50 +1,21 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"folder_purger/config"
-	"folder_purger/purger"
-
 	"github.com/stretchr/testify/require"
 )
 
-func limitsServer(t *testing.T, limits []config.FolderLimit) *httptest.Server {
-	t.Helper()
-	body, err := json.Marshal(map[string]any{"FOLDER_PURGER_LIMITS": limits})
-	require.NoError(t, err)
-
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(body)
-	}))
-}
-
-func configuratorFoldersFrom(t *testing.T, srv *httptest.Server) []*purger.Folder {
-	t.Helper()
-	limits, err := config.FetchFolderLimits(srv.URL)
-	require.NoError(t, err)
-	return foldersFor(limits)
-}
-
-func TestConfiguratorFoldersReplacesArgs(t *testing.T) {
+func TestFoldersForReplacesArgs(t *testing.T) {
 	dir := t.TempDir()
 	a := filepath.Join(dir, "a")
 	b := filepath.Join(dir, "b")
 	require.NoError(t, os.MkdirAll(a, 0755))
 
-	srv := limitsServer(t, []config.FolderLimit{
-		{Path: b, LimitBytes: 2},
-		{Path: a, LimitBytes: 1},
-	})
-	defer srv.Close()
-
-	folders := configuratorFoldersFrom(t, srv)
+	folders := foldersFor(map[string]int64{b: 2, a: 1})
 
 	require.Len(t, folders, 2)
 	require.Equal(t, a, folders[0].Path, "sorted by path")
@@ -52,13 +23,6 @@ func TestConfiguratorFoldersReplacesArgs(t *testing.T) {
 	require.Equal(t, b, folders[1].Path)
 	require.Equal(t, int64(2), folders[1].MaxSize)
 	require.DirExists(t, b, "missing config folders are created")
-}
-
-func TestConfiguratorFoldersEmptyFallsBackToArgs(t *testing.T) {
-	srv := limitsServer(t, nil)
-	defer srv.Close()
-
-	require.Nil(t, configuratorFoldersFrom(t, srv))
 }
 
 func TestFoldersForNoLimitsFallsBackToArgs(t *testing.T) {
