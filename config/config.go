@@ -25,7 +25,7 @@ type FolderLimit struct {
 	LimitBytes int64  `json:"limit_bytes"`
 }
 
-type combinedConfig struct {
+type configSnapshot struct {
 	FolderPurgerLimits []FolderLimit `json:"FOLDER_PURGER_LIMITS"`
 }
 
@@ -49,7 +49,7 @@ func FetchFolderLimits(baseURL string) (map[string]int64, error) {
 
 func fetchOnce(baseURL string) (map[string]int64, error) {
 	client := &http.Client{Timeout: fetchTimeout}
-	resp, err := client.Get(baseURL + "/config/combined")
+	resp, err := client.Get(baseURL + "/config")
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func fetchOnce(baseURL string) (map[string]int64, error) {
 }
 
 func ParseFolderLimits(body []byte) (map[string]int64, error) {
-	var cfg combinedConfig
+	var cfg configSnapshot
 	if err := json.Unmarshal(body, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}

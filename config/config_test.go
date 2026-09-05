@@ -51,7 +51,7 @@ func TestParseFolderLimitsMalformed(t *testing.T) {
 
 func TestFetchFolderLimits(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/config/combined", r.URL.Path)
+		require.Equal(t, "/config", r.URL.Path)
 		w.Write([]byte(`{"FOLDER_PURGER_LIMITS": [{"path": "/data/video", "limit_bytes": 123}]}`))
 	}))
 	defer srv.Close()
