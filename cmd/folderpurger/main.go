@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"folder_purger/config"
 	"folder_purger/purger"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,15 +25,71 @@ func main() {
 		panic("Wrong number of arguments")
 	}
 
+	folders := configuratorFolders()
+	if folders == nil {
+		folders = argFolders(argsWithoutProg)
+	}
+
+	for _, f := range folders {
+		fmt.Println("tracking folder:", f.Path, "max size:", humanize.Bytes(uint64(f.MaxSize)))
+	}
+
+	p := purger.NewPurger(folders, 5*time.Minute)
+	p.Run()
+}
+
+// configuratorFolders returns the folders the configurator says to track, or
+// nil to fall back to the CLI arguments.
+func configuratorFolders() []*purger.Folder {
+	limits, err := config.FetchFolderLimits(config.DefaultBaseURL)
+	if err != nil {
+		fmt.Printf("using CLI folders, configurator unavailable: %s\n", err)
+		return nil
+	}
+	return foldersFor(limits)
+}
+
+// foldersFor turns configurator limits into tracked folders, or returns nil if
+// none are usable so the caller falls back to the CLI arguments.
+func foldersFor(limits map[string]int64) []*purger.Folder {
+	if len(limits) == 0 {
+		fmt.Println("using CLI folders, configurator has no folder limits")
+		return nil
+	}
+
+	paths := make([]string, 0, len(limits))
+	for path := range limits {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+
+	folders := make([]*purger.Folder, 0, len(paths))
+	for _, path := range paths {
+		if err := ensureFolder(path); err != nil {
+			fmt.Printf("skipping config folder %s: %s\n", path, err)
+			continue
+		}
+		folders = append(folders, &purger.Folder{Path: path, MaxSize: limits[path]})
+	}
+
+	if len(folders) == 0 {
+		fmt.Println("using CLI folders, no usable folder from configurator")
+		return nil
+	}
+
+	return folders
+}
+
+func argFolders(args []string) []*purger.Folder {
 	var folders []*purger.Folder
 
-	for i := 0; i < len(argsWithoutProg); i += 2 {
+	for i := 0; i < len(args); i += 2 {
 		maxSize := uint64(0)
-		folder := argsWithoutProg[i]
+		folder := args[i]
 		if strings.HasSuffix(folder, "/") {
 			folder = folder[:len(folder)-1]
 		}
-		sizeParam := argsWithoutProg[i+1]
+		sizeParam := args[i+1]
 		if strings.HasSuffix(sizeParam, "%") {
 			maxSizePercent, err := strconv.Atoi(sizeParam[:len(sizeParam)-1])
 			if err != nil {
@@ -49,20 +107,25 @@ func main() {
 			maxSize = uint64(size)
 		}
 
-		if _, err := os.Stat(folder); os.IsNotExist(err) {
-			fmt.Printf("Creating folder: %s\n", folder)
-			if err := os.MkdirAll(folder, os.ModePerm); err != nil {
-				panic(fmt.Sprintf("Failed to create folder %s: %s", folder, err))
-			}
+		if err := ensureFolder(folder); err != nil {
+			panic(fmt.Sprintf("Failed to create folder %s: %s", folder, err))
 		}
 
-		f := &purger.Folder{Path: folder, MaxSize: int64(maxSize)}
-		folders = append(folders, f)
-		fmt.Println("tracking folder:", folder, "max size:", humanize.Bytes(maxSize))
+		folders = append(folders, &purger.Folder{Path: folder, MaxSize: int64(maxSize)})
 	}
 
-	p := purger.NewPurger(folders, 5*time.Minute)
-	p.Run()
+	return folders
+}
+
+func ensureFolder(path string) error {
+	if _, err := os.Stat(path); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		fmt.Printf("Creating folder: %s\n", path)
+		return os.MkdirAll(path, os.ModePerm)
+	}
+	return nil
 }
 
 func getDriveFreeSpace(path string, percent uint64) (uint64, error) {
